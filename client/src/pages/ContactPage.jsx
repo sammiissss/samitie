@@ -1,4 +1,3 @@
-createdAt: serverTimestamp(),
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ref, push, serverTimestamp, onValue, get } from 'firebase/database'
