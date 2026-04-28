@@ -1,0 +1,14 @@
+type User @table {
+  username: String!
+  passwordHash: String!
+  createdAt: Timestamp!
+  email: String
+}
+
+type Message @table {
+  content: String!
+  createdAt: Timestamp!
+  user: User
+  title: String
+  lastEditedAt: Timestamp
+}

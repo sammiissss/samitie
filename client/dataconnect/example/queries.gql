@@ -1,0 +1,8 @@
+mutation CreateUser($username: String!, $passwordHash: String!, $email: String!) @auth(level: PUBLIC, insecureReason: "This operation is for new user registration and is safe to expose to the public.") {
+  user_insert(data: {
+    username: $username,
+    passwordHash: $passwordHash,
+    email: $email,
+    createdAt_expr: "request.time"
+  })
+}

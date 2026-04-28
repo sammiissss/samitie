@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --church-blue: #1e40af;
+    --church-gold: #fbbf24;
+  }
+  
+  .text-churchBlue {
+    color: #1e40af;
+  }
+  
+  .bg-churchBlue {
+    background-color: #1e40af;
+  }
+  
+  .text-churchGold {
+    color: #fbbf24;
+  }
+  
+  .bg-churchGold {
+    background-color: #fbbf24;
+  }
+  
+  .ring-churchBlue {
+    --tw-ring-color: #1e40af;
+  }
+  
+  .border-churchBlue {
+    border-color: #1e40af;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

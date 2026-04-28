@@ -1,0 +1,32 @@
+mutation CreateDemoData @transaction @auth(level: PUBLIC, insecureReason: "Populating seed data is safe to expose to the public.") {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      username: "chatuser1",
+      passwordHash: "hash1",
+      createdAt: "2023-01-01T10:00:00Z",
+      email: "chatuser1@example.com"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      username: "chatuser2",
+      passwordHash: "hash2",
+      createdAt: "2023-01-01T10:05:00Z",
+      email: "chatuser2@example.com"
+    }
+  ])
+  message_insertMany(data: [
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      content: "Hello from chatuser1!",
+      createdAt: "2023-01-01T10:10:00Z",
+      title: "First Message"
+    },
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      content: "Hi chatuser1, this is chatuser2!",
+      createdAt: "2023-01-01T10:11:00Z",
+      title: "Response to First Message"
+    }
+  ])
+}

@@ -1,0 +1,12 @@
+{
+  "rules": {
+    "contactMessages": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$messageId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
