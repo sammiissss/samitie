@@ -18,67 +18,71 @@ function ContactPage() {
 
   // Listen for admin replies to the user's message
   useEffect(() => {
-    console.log('🔄 Reply listener effect triggered:', { userMessageId, isFirebaseConfigured, database: !!database })
-    
-    if (!userMessageId || !isFirebaseConfigured || !database) {
-      console.log('❌ Reply listener not set up:', { userMessageId, isFirebaseConfigured, database: !!database })
-      return
-    }
+    try {
+      console.log('🔄 Reply listener effect triggered:', { userMessageId, isFirebaseConfigured, database: !!database })
+      
+      if (!userMessageId || !isFirebaseConfigured || !database) {
+        console.log('❌ Reply listener not set up:', { userMessageId, isFirebaseConfigured, database: !!database })
+        return
+      }
 
-    console.log('🔍 Setting up reply listener for message ID:', userMessageId)
-    const messageRef = ref(database, `contactMessages/${userMessageId}`)
-    
-    // Check immediately for existing reply
-    const checkExistingReply = async () => {
-      try {
-        console.log('🔎 Checking for existing reply at path:', `contactMessages/${userMessageId}`)
-        const snapshot = await get(messageRef)
+      console.log('🔍 Setting up reply listener for message ID:', userMessageId)
+      const messageRef = ref(database, `contactMessages/${userMessageId}`)
+      
+      // Check immediately for existing reply
+      const checkExistingReply = async () => {
+        try {
+          console.log('🔎 Checking for existing reply at path:', `contactMessages/${userMessageId}`)
+          const snapshot = await get(messageRef)
+          const data = snapshot.val()
+          console.log('🔎 Initial check for existing reply:', data)
+          
+          if (data) {
+            console.log('📋 Full message data:', data)
+            if (data.reply) {
+              console.log('✅ Found existing reply:', data.reply)
+              setAdminReply(data.reply)
+              setShowReplySection(true)
+            } else {
+              console.log('⏳ No reply in existing data')
+            }
+          } else {
+            console.log('❌ No data found for message ID:', userMessageId)
+          }
+        } catch (error) {
+          console.error('❌ Error checking existing reply:', error)
+        }
+      }
+
+      checkExistingReply()
+
+      // Set up real-time listener
+      const unsubscribe = onValue(messageRef, (snapshot) => {
         const data = snapshot.val()
-        console.log('🔎 Initial check for existing reply:', data)
+        console.log('📥 Real-time data from Firebase:', data)
         
         if (data) {
-          console.log('📋 Full message data:', data)
+          console.log('📝 Message data found, reply:', data.reply)
+          console.log('📝 Full message object:', data)
           if (data.reply) {
-            console.log('✅ Found existing reply:', data.reply)
+            console.log('✅ Setting admin reply:', data.reply)
             setAdminReply(data.reply)
+            // Auto-show reply section when admin responds
             setShowReplySection(true)
           } else {
-            console.log('⏳ No reply in existing data')
+            console.log('⏳ No reply yet')
           }
         } else {
           console.log('❌ No data found for message ID:', userMessageId)
         }
-      } catch (error) {
-        console.error('❌ Error checking existing reply:', error)
+      })
+
+      return () => {
+        console.log('🧹 Cleaning up reply listener for message ID:', userMessageId)
+        unsubscribe()
       }
-    }
-
-    checkExistingReply()
-
-    // Set up real-time listener
-    const unsubscribe = onValue(messageRef, (snapshot) => {
-      const data = snapshot.val()
-      console.log('📥 Real-time data from Firebase:', data)
-      
-      if (data) {
-        console.log('📝 Message data found, reply:', data.reply)
-        console.log('📝 Full message object:', data)
-        if (data.reply) {
-          console.log('✅ Setting admin reply:', data.reply)
-          setAdminReply(data.reply)
-          // Auto-show reply section when admin responds
-          setShowReplySection(true)
-        } else {
-          console.log('⏳ No reply yet')
-        }
-      } else {
-        console.log('❌ No data found for message ID:', userMessageId)
-      }
-    })
-
-    return () => {
-      console.log('🧹 Cleaning up reply listener for message ID:', userMessageId)
-      unsubscribe()
+    } catch (error) {
+      console.error('❌ Error in reply listener setup:', error)
     }
   }, [userMessageId, isFirebaseConfigured, database])
 
@@ -274,12 +278,22 @@ function ContactPage() {
                 View on Google Maps
               </a>
             </div>
-            
           </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-semibold text-churchBlue">Send a Message</h2>
+          
+          {!user && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-blue-800 text-sm">
+                <strong>Note:</strong> You can fill out the form below, but you'll need to 
+                <a href="/login" className="text-blue-600 hover:text-blue-800 underline ml-1">log in</a> 
+                to send your message.
+              </p>
+            </div>
+          )}
+          
           <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="name" className="mb-1 block text-sm font-medium">

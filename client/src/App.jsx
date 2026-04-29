@@ -6,7 +6,7 @@ import AboutPage from './pages/AboutPage'
 import SermonsPage from './pages/SermonsPage'
 import EventsPage from './pages/EventsPage'
 import DonatePage from './pages/DonatePage'
-import ContactPage from './pages/ContactPage'
+import ContactTPage from './pages/contacttpage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 
@@ -21,7 +21,7 @@ function App() {
           <Route path="/sermons" element={<SermonsPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/donate" element={<DonatePage />} />
-          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/contact" element={<ContactTPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
         </Routes>

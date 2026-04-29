@@ -3,6 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 import { ref, onValue, update, push, set } from 'firebase/database'
 import { auth, database } from '../lib/firebase'
+import { 
+  sanitizeInput, 
+  validateAdminInput, 
+  setSecureSession, 
+  getSecureSession, 
+  clearSecureSession,
+  generateCSRFToken,
+  validateCSRFToken,
+  rateLimiters,
+  SecurityLogger 
+} from '../utils/adminSecurity'
 
 function AdminAuthPage() {
   const [email, setEmail] = useState('')
@@ -16,14 +27,25 @@ function AdminAuthPage() {
   const [isSending, setIsSending] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [user, setUser] = useState(null)
+  const [csrfToken, setCsrfToken] = useState('')
+  const [sessionValid, setSessionValid] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
+    // Generate CSRF token on component mount
+    const initialCsrfToken = generateCSRFToken()
+    setCsrfToken(initialCsrfToken)
+    
     // Check if user is already logged in
     const unsubscribe = auth.onAuthStateChanged((currentUser) => {
       if (currentUser) {
         setUser(currentUser)
         setIsLoggedIn(true)
+        
+        // Generate new CSRF token for logged-in user
+        const userCsrfToken = generateCSRFToken()
+        setCsrfToken(userCsrfToken)
+        
         loadMessages()
         console.log('✅ User already logged in:', currentUser.email)
       } else {
@@ -77,22 +99,68 @@ function AdminAuthPage() {
     setError('')
 
     try {
+      // Input validation and sanitization
+      const emailValidation = validateAdminInput.email(email)
+      if (!emailValidation.isValid) {
+        setError(emailValidation.error)
+        SecurityLogger.logSecurityEvent('Invalid email input', { email: email.substring(0, 3) + '***' })
+        return
+      }
+
+      const passwordValidation = validateAdminInput.password(password)
+      if (!passwordValidation.isValid) {
+        setError(passwordValidation.error)
+        SecurityLogger.logSecurityEvent('Invalid password input', { email: emailValidation.sanitized })
+        return
+      }
+
+      // Rate limiting
+      const rateLimitKey = `auth_${emailValidation.sanitized}`
+      const rateLimiter = isLogin ? rateLimiters.login : rateLimiters.register
+      
+      if (!rateLimiter.isAllowed(rateLimitKey)) {
+        setError('Too many attempts. Please try again later.')
+        SecurityLogger.logSecurityEvent('Rate limit exceeded', { 
+          action: isLogin ? 'login' : 'register',
+          email: emailValidation.sanitized 
+        })
+        return
+      }
+
+      // Authentication
       let userCredential
       if (isLogin) {
         console.log('🔑 Attempting admin login...')
-        userCredential = await signInWithEmailAndPassword(auth, email, password)
+        SecurityLogger.log('info', 'Admin login attempt', { email: emailValidation.sanitized })
+        userCredential = await signInWithEmailAndPassword(auth, emailValidation.sanitized, passwordValidation.sanitized)
         console.log('✅ Admin logged in successfully:', userCredential.user.email)
       } else {
         console.log('📝 Attempting admin registration...')
-        userCredential = await createUserWithEmailAndPassword(auth, email, password)
+        SecurityLogger.log('info', 'Admin registration attempt', { email: emailValidation.sanitized })
+        userCredential = await createUserWithEmailAndPassword(auth, emailValidation.sanitized, passwordValidation.sanitized)
         console.log('✅ Admin registered successfully:', userCredential.user.email)
       }
+      
+      // Set secure session
+      const token = setSecureSession(userCredential.user)
+      const csrfToken = generateCSRFToken()
+      setCsrfToken(csrfToken)
+      setSessionValid(true)
       
       setUser(userCredential.user)
       setIsLoggedIn(true)
       loadMessages()
+      
+      SecurityLogger.log('info', 'Authentication successful', { 
+        email: emailValidation.sanitized,
+        uid: userCredential.user.uid 
+      })
     } catch (error) {
       console.error('❌ Authentication error:', error)
+      SecurityLogger.logError(error, { 
+        context: isLogin ? 'admin_login' : 'admin_registration',
+        email: email 
+      })
       setError(isLogin ? 'Invalid email or password' : 'Registration failed')
     } finally {
       setLoading(false)
@@ -100,8 +168,27 @@ function AdminAuthPage() {
   }
 
   const handleReply = async (messageId) => {
-    if (!replyText.trim()) {
-      alert('Reply cannot be empty')
+    // Input validation
+    const replyValidation = validateAdminInput.reply(replyText)
+    if (!replyValidation.isValid) {
+      alert(replyValidation.error)
+      SecurityLogger.logSecurityEvent('Invalid reply input', { messageId })
+      return
+    }
+
+    // CSRF validation - only validate if token exists
+    if (csrfToken && !validateCSRFToken(csrfToken)) {
+      console.log('🔒 CSRF token validation failed, generating new token')
+      const newCsrfToken = generateCSRFToken()
+      setCsrfToken(newCsrfToken)
+      SecurityLogger.logSecurityEvent('CSRF validation failed - token regenerated', { messageId })
+    }
+
+    // Rate limiting
+    const rateLimitKey = `reply_${user?.uid || 'anonymous'}`
+    if (!rateLimiters.reply.isAllowed(rateLimitKey)) {
+      alert('Too many reply attempts. Please wait a moment.')
+      SecurityLogger.logSecurityEvent('Reply rate limit exceeded', { userId: user?.uid, messageId })
       return
     }
 
@@ -109,20 +196,22 @@ function AdminAuthPage() {
     
     try {
       console.log('📤 Sending reply to message:', messageId)
+      SecurityLogger.log('info', 'Admin reply attempt', { messageId, userId: user?.uid })
       
       const messageRef = ref(database, `contactMessages/${messageId}`)
       await update(messageRef, {
-        reply: replyText.trim(),
+        reply: replyValidation.sanitized,
         repliedAt: new Date().toISOString(),
         status: 'replied',
         repliedBy: user.email,
-        repliedByUid: user.uid
+        repliedByUid: user.uid,
+        csrfToken: csrfToken
       })
 
       setMessages(prevMessages => 
         prevMessages.map(msg => 
           msg.id === messageId 
-            ? { ...msg, reply: replyText.trim(), repliedAt: new Date().toISOString(), status: 'replied', repliedBy: user.email, repliedByUid: user.uid }
+            ? { ...msg, reply: replyValidation.sanitized, repliedAt: new Date().toISOString(), status: 'replied', repliedBy: user.email, repliedByUid: user.uid }
             : msg
         )
       )
@@ -132,8 +221,10 @@ function AdminAuthPage() {
       
       alert('✅ Reply sent successfully!')
       console.log('📤 Reply sent for message:', messageId)
+      SecurityLogger.log('info', 'Admin reply successful', { messageId, userId: user?.uid })
     } catch (error) {
       console.error('❌ Error sending reply:', error)
+      SecurityLogger.logError(error, { context: 'admin_reply', userId: user?.uid, messageId })
       alert('❌ Failed to send reply. Please try again.')
     } finally {
       setIsSending(false)
@@ -145,8 +236,25 @@ function AdminAuthPage() {
       return
     }
 
+    // CSRF validation - only validate if token exists
+    if (csrfToken && !validateCSRFToken(csrfToken)) {
+      console.log('🔒 CSRF token validation failed in delete, generating new token')
+      const newCsrfToken = generateCSRFToken()
+      setCsrfToken(newCsrfToken)
+      SecurityLogger.logSecurityEvent('CSRF validation failed in delete - token regenerated', { messageId })
+    }
+
+    // Rate limiting
+    const rateLimitKey = `delete_${user?.uid || 'anonymous'}`
+    if (!rateLimiters.delete.isAllowed(rateLimitKey)) {
+      alert('Too many delete attempts. Please wait a moment.')
+      SecurityLogger.logSecurityEvent('Delete rate limit exceeded', { userId: user?.uid, messageId })
+      return
+    }
+
     try {
       console.log('🗑️ Deleting message:', messageId)
+      SecurityLogger.log('info', 'Admin delete attempt', { messageId, userId: user?.uid })
       
       await set(ref(database, `contactMessages/${messageId}`), null)
       
@@ -158,8 +266,10 @@ function AdminAuthPage() {
       
       alert('✅ Message deleted successfully!')
       console.log('🗑️ Message deleted:', messageId)
+      SecurityLogger.log('info', 'Admin delete successful', { messageId, userId: user?.uid })
     } catch (error) {
       console.error('❌ Error deleting message:', error)
+      SecurityLogger.logError(error, { context: 'admin_delete', userId: user?.uid, messageId })
       alert('❌ Failed to delete message. Please try again.')
     }
   }
@@ -193,15 +303,25 @@ function AdminAuthPage() {
   const handleLogout = async () => {
     try {
       console.log('🔒 Logging out admin...')
+      SecurityLogger.log('info', 'Admin logout attempt', { userId: user?.uid, email: user?.email })
+      
       await auth.signOut()
+      
+      // Clear all security data
+      clearSecureSession()
+      setCsrfToken('')
+      setSessionValid(false)
       setIsLoggedIn(false)
       setMessages([])
       setSelectedMessage(null)
       setReplyText('')
       setUser(null)
+      
       console.log('✅ Admin logged out successfully')
+      SecurityLogger.log('info', 'Admin logout successful', { userId: user?.uid })
     } catch (error) {
       console.error('❌ Logout error:', error)
+      SecurityLogger.logError(error, { context: 'admin_logout', userId: user?.uid })
     }
   }
 
